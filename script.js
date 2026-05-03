@@ -519,8 +519,7 @@ function initTouchMaterialDrag(item) {
             if (!isDragging) return;
 
             ev.preventDefault();
-            const dropTarget = document.elementFromPoint(clientX, clientY);
-            const grid = dropTarget?.closest?.('.day-grid');
+            const grid = getPlannerGridAtPoint(clientX, clientY);
             if (!grid) {
                 setTimeout(() => { suppressClick = false; }, 0);
                 return;
@@ -1001,7 +1000,7 @@ function initTimetable() {
     
     const timeCol = document.createElement('div');
     timeCol.className = 'time-col-labels';
-    let timeHtml = `<div class="day-header"> </div><div class="day-grid">`;
+    let timeHtml = `<div class="day-header"> </div><div class="time-grid">`;
     for(let i=0; i<22; i++) {
         let h = (i + 5) % 24;
         timeHtml += `<div class="grid-line"><span class="time-label">${h}:00</span></div>`;
@@ -1176,6 +1175,8 @@ function handleDrop(e) {
 }
 
 function createMaterialBlockAtPoint(grid, clientY, data, options = {}) {
+    if (!isValidPlannerGrid(grid)) return;
+
     const rect = grid.getBoundingClientRect();
     const scaleY = rect.height > 0 ? rect.height / MAX_HEIGHT_PX : 1;
     const dragOffsetY = options.dragOffsetY || 0;
@@ -1204,6 +1205,16 @@ function createMaterialBlockAtPoint(grid, clientY, data, options = {}) {
     });
 }
 
+function isValidPlannerGrid(grid) {
+    return !!grid && grid.classList.contains('day-grid') && grid.dataset.colIndex !== undefined;
+}
+
+function getPlannerGridAtPoint(clientX, clientY) {
+    const dropTarget = document.elementFromPoint(clientX, clientY);
+    const grid = dropTarget?.closest?.('.day-grid');
+    return isValidPlannerGrid(grid) ? grid : null;
+}
+
 function getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY = 0, snapInterval = PX_PER_30_MIN) {
     const rect = grid.getBoundingClientRect();
     const scaleY = rect.height > 0 ? rect.height / MAX_HEIGHT_PX : 1;
@@ -1213,8 +1224,7 @@ function getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY = 0, sna
 }
 
 function movePlanBlockAtPoint(block, clientX, clientY, dragOffsetY = 0) {
-    const dropTarget = document.elementFromPoint(clientX, clientY);
-    const grid = dropTarget?.closest?.('.day-grid');
+    const grid = getPlannerGridAtPoint(clientX, clientY);
     if (!grid) return false;
 
     const height = parseFloat(block.style.height) || getDefaultBlockHeight();

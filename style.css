@@ -94,7 +94,7 @@ body.material-dragging .planner-board {
 .is-exporting .todo-row textarea { height: auto; overflow: visible; }
 .day-col.is-today .day-header { background: #FFF7ED; color: #9A3412; }
 .day-col.is-today .day-grid { background: #FFFBEB; }
-.day-grid { position: relative; background: #fff; height: 1320px; } 
+.day-grid, .time-grid { position: relative; background: #fff; height: 1320px; } 
 .current-time-line { position: absolute; left: 0; right: 0; height: 2px; background: #EF4444; z-index: 50; pointer-events: none; box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12); }
 .current-time-line::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #EF4444; }
 .grid-line { border-bottom: 1px solid #F1F5F9; height: 59px; pointer-events: none; }
@@ -204,7 +204,8 @@ body.material-dragging .planner-board {
     .plan-block,
     .resize-handle-top,
     .resize-handle-bottom,
-    .day-grid {
+    .day-grid,
+    .time-grid {
         touch-action: none;
     }
 
