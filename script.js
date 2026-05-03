@@ -1363,7 +1363,6 @@ function initTouchPlanBlock(block) {
         const startHeight = parseFloat(block.style.height) || getDefaultBlockHeight();
         let gesture = null;
         let moved = false;
-        let longPressReady = false;
         const rect = block.getBoundingClientRect();
         const dragOffsetY = Math.max(0, startY - rect.top);
 
@@ -1391,14 +1390,7 @@ function initTouchPlanBlock(block) {
             block.style.height = `${bottom - snappedTop}px`;
         };
 
-        const longPressTimer = !resizeEdge ? setTimeout(() => {
-            longPressReady = true;
-            selectBlock();
-            document.body.classList.add('material-dragging');
-            setPointerCaptureSafely(block, e.pointerId);
-        }, 420) : null;
-
-        if (wasReady && resizeEdge) {
+        if (wasReady) {
             e.preventDefault();
             document.body.classList.add('material-dragging');
             setPointerCaptureSafely(block, e.pointerId);
@@ -1408,8 +1400,7 @@ function initTouchPlanBlock(block) {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
 
-            if (!resizeEdge && !longPressReady && Math.hypot(dx, dy) >= 8) {
-                clearTimeout(longPressTimer);
+            if (!wasReady && Math.hypot(dx, dy) >= 8) {
                 cleanup();
                 return;
             }
@@ -1419,7 +1410,7 @@ function initTouchPlanBlock(block) {
             if (!gesture) {
                 if (wasReady && resizeEdge) {
                     gesture = 'resize';
-                } else if (longPressReady) {
+                } else if (wasReady) {
                     gesture = 'move';
                 } else {
                     return;
@@ -1437,7 +1428,6 @@ function initTouchPlanBlock(block) {
         };
 
         const cleanup = () => {
-            clearTimeout(longPressTimer);
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', end);
             document.removeEventListener('pointercancel', cancel);
