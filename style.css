@@ -192,7 +192,8 @@ body.material-dragging { overflow: hidden; touch-action: none; }
     }
 
     #sortable-folder-list,
-    .sortable-item {
+    .sortable-item,
+    .material-item {
         touch-action: none;
     }
 

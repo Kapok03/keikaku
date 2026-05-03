@@ -82,6 +82,16 @@ function escapeHtml(value) {
     }[char]));
 }
 
+function setPointerCaptureSafely(el, pointerId) {
+    if (pointerId == null || !el.setPointerCapture) return;
+    try { el.setPointerCapture(pointerId); } catch (err) {}
+}
+
+function releasePointerCaptureSafely(el, pointerId) {
+    if (pointerId == null || !el.releasePointerCapture) return;
+    try { el.releasePointerCapture(pointerId); } catch (err) {}
+}
+
 // --- 左サイドバーと教材管理 ---
 function initSidebar() {
     const container = document.getElementById('sidebar-content');
@@ -350,7 +360,7 @@ function initFolderSortModal() {
     list.innerHTML = '';
     folders.forEach(f => {
         const item = document.createElement('div');
-        item.className = 'sortable-item'; item.draggable = true; item.dataset.id = f.id;
+        item.className = 'sortable-item'; item.draggable = window.innerWidth > SIDEBAR_DRAWER_BREAKPOINT; item.dataset.id = f.id;
         const isBase = (f.id === 'f-fav' || f.id === 'f-all') ? ' (基本)' : '';
         item.innerHTML = `<span class="drag-handle">≡</span> 📁 ${f.name}${isBase}`;
         item.addEventListener('dragstart', (e) => {
@@ -381,26 +391,39 @@ function initFolderSortModal() {
 }
 
 function initTouchFolderSortItem(item, list) {
+    const startSort = (startY, pointerId) => {
+        setPointerCaptureSafely(item, pointerId);
+        item.classList.add('dragging', 'touch-dragging');
+        list.dataset.touchSorting = 'true';
+
+        return {
+            move(clientY) {
+                const afterElement = getDragAfterElement(list, clientY);
+                if (afterElement == null) list.appendChild(item);
+                else list.insertBefore(item, afterElement);
+            },
+            stop() {
+                releasePointerCaptureSafely(item, pointerId);
+                item.classList.remove('dragging', 'touch-dragging');
+                list.dataset.touchSorting = 'false';
+            }
+        };
+    };
+
     item.addEventListener('pointerdown', (e) => {
         if (e.button && e.button !== 0) return;
         if (e.pointerType === 'mouse') return;
         e.preventDefault();
-        item.setPointerCapture?.(e.pointerId);
-        item.classList.add('dragging', 'touch-dragging');
-        list.dataset.touchSorting = 'true';
+        const sorter = startSort(e.clientY, e.pointerId);
 
         const moveItem = (ev) => {
             ev.preventDefault();
-            const afterElement = getDragAfterElement(list, ev.clientY);
-            if (afterElement == null) list.appendChild(item);
-            else list.insertBefore(item, afterElement);
+            sorter.move(ev.clientY);
         };
 
         const stopSort = (ev) => {
             ev.preventDefault();
-            item.releasePointerCapture?.(e.pointerId);
-            item.classList.remove('dragging', 'touch-dragging');
-            list.dataset.touchSorting = 'false';
+            sorter.stop();
             item.removeEventListener('pointermove', moveItem);
             item.removeEventListener('pointerup', stopSort);
             item.removeEventListener('pointercancel', stopSort);
@@ -410,6 +433,34 @@ function initTouchFolderSortItem(item, list) {
         item.addEventListener('pointerup', stopSort);
         item.addEventListener('pointercancel', stopSort);
     });
+
+    if (!window.PointerEvent) {
+        item.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            if (!touch) return;
+            e.preventDefault();
+            const sorter = startSort(touch.clientY);
+
+            const moveItem = (ev) => {
+                const moveTouch = ev.touches[0];
+                if (!moveTouch) return;
+                ev.preventDefault();
+                sorter.move(moveTouch.clientY);
+            };
+
+            const stopSort = (ev) => {
+                ev.preventDefault();
+                sorter.stop();
+                document.removeEventListener('touchmove', moveItem);
+                document.removeEventListener('touchend', stopSort);
+                document.removeEventListener('touchcancel', stopSort);
+            };
+
+            document.addEventListener('touchmove', moveItem, { passive: false });
+            document.addEventListener('touchend', stopSort, { passive: false });
+            document.addEventListener('touchcancel', stopSort, { passive: false });
+        }, { passive: false });
+    }
 }
 
 function initTouchMaterialDrag(item) {
@@ -424,17 +475,13 @@ function initTouchMaterialDrag(item) {
         suppressClick = false;
     }, true);
 
-    item.addEventListener('pointerdown', (e) => {
-        if (e.button && e.button !== 0) return;
-        if (window.innerWidth > SIDEBAR_DRAWER_BREAKPOINT && e.pointerType === 'mouse') return;
-        const startX = e.clientX;
-        const startY = e.clientY;
+    const startTouchDrag = (startX, startY, pointerId) => {
         let isDragging = false;
         let ghost = null;
 
-        const move = (ev) => {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
+        const move = (ev, clientX, clientY) => {
+            const dx = clientX - startX;
+            const dy = clientY - startY;
             if (!isDragging && Math.hypot(dx, dy) < 8) return;
 
             ev.preventDefault();
@@ -445,34 +492,29 @@ function initTouchMaterialDrag(item) {
                 ghost = item.cloneNode(true);
                 ghost.classList.add('material-drag-ghost');
                 document.body.appendChild(ghost);
-                item.setPointerCapture?.(e.pointerId);
+                setPointerCaptureSafely(item, pointerId);
             }
 
             if (ghost) {
-                ghost.style.left = `${ev.clientX}px`;
-                ghost.style.top = `${ev.clientY}px`;
+                ghost.style.left = `${clientX}px`;
+                ghost.style.top = `${clientY}px`;
             }
         };
 
-        const end = (ev) => {
-            document.removeEventListener('pointermove', move);
-            document.removeEventListener('pointerup', end);
-            document.removeEventListener('pointercancel', end);
-            item.releasePointerCapture?.(e.pointerId);
-
+        const end = (ev, clientX, clientY) => {
             if (ghost) ghost.remove();
             document.body.classList.remove('material-dragging');
             if (!isDragging) return;
 
             ev.preventDefault();
-            const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY);
+            const dropTarget = document.elementFromPoint(clientX, clientY);
             const grid = dropTarget?.closest?.('.day-grid');
             if (!grid) {
                 setTimeout(() => { suppressClick = false; }, 0);
                 return;
             }
 
-            createMaterialBlockAtPoint(grid, ev.clientY, {
+            createMaterialBlockAtPoint(grid, clientY, {
                 name: item.dataset.name,
                 color: item.dataset.color,
                 category: item.dataset.category,
@@ -483,10 +525,53 @@ function initTouchMaterialDrag(item) {
             setTimeout(() => { suppressClick = false; }, 0);
         };
 
+        return { move, end };
+    };
+
+    item.addEventListener('pointerdown', (e) => {
+        if (e.button && e.button !== 0) return;
+        if (window.innerWidth > SIDEBAR_DRAWER_BREAKPOINT && e.pointerType === 'mouse') return;
+        const drag = startTouchDrag(e.clientX, e.clientY, e.pointerId);
+
+        const move = (ev) => drag.move(ev, ev.clientX, ev.clientY);
+        const end = (ev) => {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', end);
+            document.removeEventListener('pointercancel', end);
+            releasePointerCaptureSafely(item, e.pointerId);
+            drag.end(ev, ev.clientX, ev.clientY);
+        };
+
         document.addEventListener('pointermove', move, { passive: false });
         document.addEventListener('pointerup', end, { passive: false });
         document.addEventListener('pointercancel', end, { passive: false });
     });
+
+    if (!window.PointerEvent) {
+        item.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            if (!touch) return;
+            const drag = startTouchDrag(touch.clientX, touch.clientY);
+
+            const move = (ev) => {
+                const moveTouch = ev.touches[0];
+                if (!moveTouch) return;
+                drag.move(ev, moveTouch.clientX, moveTouch.clientY);
+            };
+            const end = (ev) => {
+                const endTouch = ev.changedTouches[0];
+                document.removeEventListener('touchmove', move);
+                document.removeEventListener('touchend', end);
+                document.removeEventListener('touchcancel', end);
+                if (!endTouch) return;
+                drag.end(ev, endTouch.clientX, endTouch.clientY);
+            };
+
+            document.addEventListener('touchmove', move, { passive: false });
+            document.addEventListener('touchend', end, { passive: false });
+            document.addEventListener('touchcancel', end, { passive: false });
+        }, { passive: false });
+    }
 }
 
 function getDragAfterElement(container, y) {
