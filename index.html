@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <link rel="icon" href="./favicon.ico">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>週間計画票</title>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="週間計画表">
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>教材リスト</h3>
+            <div style="display: flex; gap: 6px;">
+                <button class="btn" id="sidebar-sort-btn" style="padding: 4px 8px; font-size: 11px;">並び替え</button>
+                <button class="btn" id="sidebar-edit-btn" style="padding: 4px 8px; font-size: 11px;">編集</button>
+            </div>
+        </div>
+        <div id="sidebar-content"></div>
+        <div id="sidebar-now-next-slot"></div>
+    </div>
+
+    <div class="main-content">
+        <div class="controls-bar">
+            <div style="display: flex; gap: 8px;">
+                <button class="btn sidebar-toggle-btn" id="sidebar-toggle-btn" type="button" aria-controls="sidebar" aria-expanded="true">教材</button>
+                <button class="btn" id="undo-btn">↩ Undo</button>
+                <button class="btn" id="redo-btn">↪ Redo</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-danger" id="reset-planner-btn">週間計画票をリセット</button>
+                <button class="btn" id="export-modal-btn">データとして出力</button>
+                <button class="btn" id="import-btn" onclick="document.getElementById('import-file').click()">データを読み込む</button>
+                <input type="file" id="import-file" style="display:none" accept=".data">
+                <button class="btn btn-primary" id="dl-btn">書き出し</button>
+                <span id="status-msg"></span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-weight: bold; font-size: 13px; color: #4A5568;">範囲:</span>
+                <input type="date" id="start-date-input" class="date-input">
+                <button class="btn" id="settings-btn">自動入力設定</button>
+                <button class="btn icon-btn" id="app-settings-btn" title="設定" aria-label="設定">⚙</button>
+            </div>
+        </div>
+
+        <div class="task-overview">
+            <div class="weekly-task-container">
+                <div class="wt-header">
+                    <b>今週やること</b>
+                    <button class="btn task-edit-btn" id="wt-edit-btn" data-target="wt-content" onclick="toggleTaskEdit('wt-content', 'wt-edit-btn')" style="padding: 4px 12px; font-size: 11px;">編集</button>
+                </div>
+                <div id="wt-content" contenteditable="false" class="wt-content">右上の編集ボタンからテキストを編集したり画像をペーストできます</div>
+            </div>
+
+            <div class="weekly-task-container">
+                <div class="wt-header">
+                    <b>今月やること</b>
+                    <button class="btn task-edit-btn" id="mt-edit-btn" data-target="mt-content" onclick="toggleTaskEdit('mt-content', 'mt-edit-btn')" style="padding: 4px 12px; font-size: 11px;">編集</button>
+                </div>
+                <div id="mt-content" contenteditable="false" class="wt-content">右上の編集ボタンからテキストを編集したり画像をペーストできます</div>
+            </div>
+        </div>
+
+        <div class="planner-board" id="capture-area">
+            <div class="header-area">
+                <h1 contenteditable="true">週間計画票</h1>
+                <h3><span id="display-start-date">YYYY/MM/DD</span> ～ <span id="display-end-date">YYYY/MM/DD</span></h3>
+            </div>
+            <div class="planner-layout">
+                <div class="timetable" id="timetable">
+                    <!-- JSで生成 -->
+                </div>
+                <aside class="now-next-panel" id="now-next-panel">
+                    <div class="now-next-section">
+                        <div class="now-next-title">今やる予定</div>
+                        <div id="current-plan-card" class="schedule-placeholder">該当なし</div>
+                    </div>
+                    <div class="now-next-section">
+                        <div class="now-next-title">次やる予定</div>
+                        <div id="next-plan-card" class="schedule-placeholder">該当なし</div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- 各種モーダル -->
+    <div id="edit-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 300px;">
+            <h4>ブロックの編集</h4>
+            <label style="display: block; margin-bottom: 16px;">時間(分): <input type="number" id="edit-duration" step="10" min="10" style="width: 80px;"></label>
+            <label style="display: block; margin-bottom: 16px;">
+                表示する文字:
+                <textarea id="edit-note" rows="3" placeholder="教材名の下に表示" style="width: 100%; box-sizing: border-box; margin-top: 6px; resize: vertical;"></textarea>
+            </label>
+            <div class="modal-buttons">
+                <button id="btn-update" class="btn btn-primary">更新</button>
+                <button id="btn-delete" class="btn btn-danger">削除</button>
+                <button id="btn-cancel" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mat-edit-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 300px;">
+            <h4 style="margin-bottom: 16px;">教材の編集</h4>
+            <div class="manage-form-grid">
+                <span>名前:</span> <input type="text" id="edit-mat-name">
+                <span>フォルダ:</span> <select id="edit-mat-folder"></select>
+                <span>色:</span> <input type="color" id="edit-mat-color">
+                <span>お気に入り:</span> <label style="display: flex; align-items: center; gap: 4px;"><input type="checkbox" id="edit-mat-fav"> 登録する</label>
+            </div>
+            <div class="modal-buttons" style="margin-top: 24px;">
+                <button id="btn-mat-update" class="btn btn-primary">更新</button>
+                <button id="btn-mat-delete" class="btn btn-danger">削除</button>
+                <button id="btn-mat-cancel" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="folder-sort-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 300px;">
+            <h4 style="margin-bottom: 8px;">フォルダの並び替え</h4>
+            <p style="font-size: 11px; color: #718096; margin-bottom: 16px;">ドラッグ＆ドロップで順番を入れ替えてください。</p>
+            <div id="sortable-folder-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            <div class="modal-buttons" style="margin-top: 24px;">
+                <button id="btn-sort-apply" class="btn btn-primary">決定</button>
+                <button id="btn-sort-cancel" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sidebar-manage-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 420px;">
+            <h4 style="margin-bottom: 16px;">フォルダ・教材の管理</h4>
+            <div class="settings-box">
+                <b>📁 フォルダの追加</b>
+                <div id="folder-manage-list" style="margin: 12px 0; max-height: 140px; overflow-y: auto; padding-right: 4px;"></div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="new-folder-name" placeholder="新しいフォルダ名" style="flex:1;">
+                    <button class="btn btn-primary" id="add-folder-btn" style="padding: 6px 12px; font-size: 12px;">追加</button>
+                </div>
+            </div>
+
+            <div class="settings-box" style="background: #EBF8FF; margin-top: 16px;">
+                <b>📄 新しい教材を作る</b>
+                <div class="manage-form-grid" style="margin-top: 12px;">
+                    <span>名前:</span> <input type="text" id="new-mat-name" placeholder="教材名">
+                    <span>フォルダ:</span> <select id="new-mat-folder"></select>
+                    <span>色:</span> <input type="color" id="new-mat-color" value="#0F9D58">
+                    <span>設定:</span> 
+                    <select id="new-mat-category">
+                        <option value="subject">To Do(教科) に含める</option>
+                        <option value="other">To Do(その他) に含める</option>
+                        <option value="none">どちらにも記入せず除外</option>
+                    </select>
+                </div>
+                <div style="text-align: right; margin-top: 12px;">
+                    <button class="btn btn-primary" id="add-mat-btn">教材を追加</button>
+                </div>
+            </div>
+
+            <div class="modal-buttons" style="margin-top: 24px;">
+                <div></div>
+                <button id="btn-manage-close" class="btn">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gcal-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 350px;">
+            <h4 style="margin-bottom: 8px;">Googleカレンダー連携</h4>
+            <p style="font-size: 11px; color: #718096; margin-bottom: 12px;">Googleカレンダーの設定 ＞ 「非公開URL（iCal形式）」を貼り付けてください。<br>※今週の予定のみが自動で配置されます。</p>
+            <input type="text" id="gcal-url-input" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" style="width: 100%; padding: 8px; border: 1px solid #E2E8F0; border-radius: 4px; font-size: 12px; margin-bottom: 12px; box-sizing: border-box;">
+            <div id="gcal-status" style="font-size: 12px; color: #3B82F6; font-weight: bold; text-align: center;"></div>
+            <div class="modal-buttons">
+                <button id="btn-gcal-sync" class="btn btn-primary">同期する</button>
+                <button id="btn-gcal-close" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="export-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 300px; text-align: center;">
+            <h4 style="margin-bottom: 20px;">書き出し形式の選択</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button class="btn btn-primary" id="export-all-btn">全て書き出し (計画票＋教材リスト)</button>
+                <button class="btn" id="export-planner-btn">週間計画表のみ書き出し</button>
+                <button class="btn" id="export-mat-btn">教材リストのみ書き出し</button>
+            </div>
+            <div style="margin-top: 24px; text-align: right;">
+                <button id="btn-export-close" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="download-format-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 300px; text-align: center;">
+            <h4 style="margin-bottom: 20px;">ダウンロード形式の選択</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button class="btn btn-primary" id="download-pdf-btn">PDFとしてダウンロード</button>
+                <button class="btn btn-primary" id="download-image-btn">画像としてダウンロード</button>
+            </div>
+            <div style="margin-top: 24px; text-align: right;">
+                <button id="btn-download-close" class="btn">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 380px;">
+            <h4 style="margin-bottom: 8px;">自動入力の設定</h4>
+            <p style="font-size: 12px; color: #718096;">決まった時間に自動で入力する設定を作れます。</p>
+            
+            <div id="auto-add-list" style="margin: 16px 0; max-height: 140px; overflow-y: auto;"></div>
+
+            <div class="settings-box">
+                <div class="manage-form-grid">
+                    <span>教材:</span> <select id="auto-mat-select"></select>
+                    <span>開始:</span> <select id="auto-start-time"></select>
+                    <span>終了:</span> <select id="auto-end-time"></select>
+                </div>
+                <div style="text-align: right; margin-top: 12px;">
+                    <button class="btn btn-primary" id="add-auto-rule-btn" style="padding: 6px 12px; font-size: 12px;">ルールを追加</button>
+                </div>
+            </div>
+
+            <div class="modal-buttons" style="margin-top: 24px;">
+                <button id="apply-auto-add-btn" class="btn btn-primary">現在の表に適用する</button>
+                <button id="btn-settings-close" class="btn">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-settings-modal" class="modal-hidden">
+        <div class="modal-content" style="width: 360px;">
+            <h4 style="margin-bottom: 16px;">設定</h4>
+            <div class="settings-box">
+                <label class="setting-row">
+                    <span>日ごとのリセット時に確認する</span>
+                    <input type="checkbox" id="setting-confirm-day-reset">
+                </label>
+                <label class="setting-row">
+                    <span>教材の初期配置時間</span>
+                    <span class="setting-inline-input">
+                        <input type="number" id="setting-default-minutes" min="1" step="1">
+                        <span>分</span>
+                    </span>
+                </label>
+            </div>
+            <div class="modal-buttons" style="margin-top: 24px;">
+                <button id="btn-app-settings-save" class="btn btn-primary">保存</button>
+                <button id="btn-app-settings-close" class="btn">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 達成度(質) 選択ポップアップ -->
+    <div id="quality-selector-popup" class="modal-hidden">
+        <div class="q-opt" data-value="1">1</div>
+        <div class="q-opt" data-value="2">2</div>
+        <div class="q-opt" data-value="3">3</div>
+        <div class="q-opt" data-value="4">4</div>
+        <div class="q-opt" data-value="5">5</div>
+        <div class="q-opt q-clear" data-value="">クリア</div>
+    </div>
+
+    <script src="script.js" defer></script>
+
+    <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // 'service-worker.js' を登録 (index.htmlからの相対パス)
+        navigator.serviceWorker.register('service-worker.js')
+          .then((registration) => {
+            console.log('Service Worker registered successfully:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+</script>
+</body>
+</html>
