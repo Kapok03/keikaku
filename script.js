@@ -1328,12 +1328,7 @@ function initTouchPlanBlock(block) {
         e.stopPropagation();
 
         const resizeHandle = e.target.closest('.resize-handle-top, .resize-handle-bottom');
-        if (resizeHandle) {
-            initTouchResize(e, resizeHandle.classList.contains('resize-handle-top') ? 'top' : 'bottom', block);
-            return;
-        }
-
-        const wasReady = touchReadyPlanBlock === block;
+        const resizeEdge = resizeHandle?.classList.contains('resize-handle-top') ? 'top' : (resizeHandle ? 'bottom' : null);
         clearTouchReadyPlanBlock(block);
         touchReadyPlanBlock = block;
         block.classList.add('is-touch-ready');
@@ -1342,20 +1337,48 @@ function initTouchPlanBlock(block) {
         const startY = e.clientY;
         const startGrid = block.parentElement;
         const startTop = block.style.top;
+        const startTopPx = parseFloat(block.style.top) || 0;
+        const startHeight = parseFloat(block.style.height) || getDefaultBlockHeight();
+        let gesture = null;
         let moved = false;
-        let dragging = false;
         const rect = block.getBoundingClientRect();
         const dragOffsetY = Math.max(0, startY - rect.top);
         setPointerCaptureSafely(block, e.pointerId);
 
+        const resizeBlock = (clientY) => {
+            const dy = clientY - startY;
+
+            if (resizeEdge === 'bottom') {
+                const rawHeight = Math.max(PX_PER_10_MIN, startHeight + dy);
+                let snappedHeight = Math.round(rawHeight / PX_PER_10_MIN) * PX_PER_10_MIN;
+                snappedHeight = Math.min(snappedHeight, MAX_HEIGHT_PX - startTopPx);
+                block.style.height = `${snappedHeight}px`;
+                return;
+            }
+
+            const bottom = startTopPx + startHeight;
+            const rawTop = Math.max(0, Math.min(startTopPx + dy, bottom - PX_PER_10_MIN));
+            const snappedTop = Math.max(0, Math.min(Math.round(rawTop / PX_PER_10_MIN) * PX_PER_10_MIN, bottom - PX_PER_10_MIN));
+            block.style.top = `${snappedTop}px`;
+            block.style.height = `${bottom - snappedTop}px`;
+        };
+
         const move = (ev) => {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
-            if (!dragging && Math.hypot(dx, dy) < 8) return;
+            if (!gesture && Math.hypot(dx, dy) < 8) return;
 
             ev.preventDefault();
-            if (!dragging) document.body.classList.add('material-dragging');
-            dragging = true;
+            if (!gesture) {
+                document.body.classList.add('material-dragging');
+                gesture = resizeEdge && Math.abs(dy) > Math.abs(dx) ? 'resize' : 'move';
+            }
+
+            if (gesture === 'resize') {
+                resizeBlock(ev.clientY);
+                return;
+            }
+
             moved = movePlanBlockAtPoint(block, ev.clientX, ev.clientY, dragOffsetY) || moved;
         };
 
@@ -1367,17 +1390,21 @@ function initTouchPlanBlock(block) {
             releasePointerCaptureSafely(block, e.pointerId);
             document.body.classList.remove('material-dragging');
 
-            if (dragging) {
+            if (gesture === 'move') {
                 if (!moved && startGrid) {
                     startGrid.appendChild(block);
                     block.style.top = startTop;
                 }
                 saveState();
-                updateDailyTodos();
                 return;
             }
 
-            if (wasReady) {
+            if (gesture === 'resize') {
+                saveState();
+                return;
+            }
+
+            if (!gesture) {
                 openEditModal(block);
                 clearTouchReadyPlanBlock();
             }
@@ -1392,6 +1419,7 @@ function initTouchPlanBlock(block) {
             if (startGrid) {
                 startGrid.appendChild(block);
                 block.style.top = startTop;
+                block.style.height = `${startHeight}px`;
             }
         };
 
