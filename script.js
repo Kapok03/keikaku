@@ -16,6 +16,7 @@ let currentTimeTimer = null;
 let draggedPlanBlockMove = null;
 let draggedPlanBlockDropped = false;
 let nowNextOriginalParent = null;
+let touchReadyPlanBlock = null;
 
 let folders = [
     { id: 'f-all', name: '全て表示' },
@@ -90,6 +91,17 @@ function setPointerCaptureSafely(el, pointerId) {
 function releasePointerCaptureSafely(el, pointerId) {
     if (pointerId == null || !el.releasePointerCapture) return;
     try { el.releasePointerCapture(pointerId); } catch (err) {}
+}
+
+function isTouchPlannerMode() {
+    return window.innerWidth <= SIDEBAR_DRAWER_BREAKPOINT;
+}
+
+function clearTouchReadyPlanBlock(exceptBlock = null) {
+    if (touchReadyPlanBlock && touchReadyPlanBlock !== exceptBlock) {
+        touchReadyPlanBlock.classList.remove('is-touch-ready');
+    }
+    if (touchReadyPlanBlock !== exceptBlock) touchReadyPlanBlock = null;
 }
 
 // --- 左サイドバーと教材管理 ---
@@ -424,14 +436,14 @@ function initTouchFolderSortItem(item, list) {
         const stopSort = (ev) => {
             ev.preventDefault();
             sorter.stop();
-            item.removeEventListener('pointermove', moveItem);
-            item.removeEventListener('pointerup', stopSort);
-            item.removeEventListener('pointercancel', stopSort);
+            document.removeEventListener('pointermove', moveItem);
+            document.removeEventListener('pointerup', stopSort);
+            document.removeEventListener('pointercancel', stopSort);
         };
 
-        item.addEventListener('pointermove', moveItem);
-        item.addEventListener('pointerup', stopSort);
-        item.addEventListener('pointercancel', stopSort);
+        document.addEventListener('pointermove', moveItem, { passive: false });
+        document.addEventListener('pointerup', stopSort, { passive: false });
+        document.addEventListener('pointercancel', stopSort, { passive: false });
     });
 
     if (!window.PointerEvent) {
@@ -531,6 +543,7 @@ function initTouchMaterialDrag(item) {
     item.addEventListener('pointerdown', (e) => {
         if (e.button && e.button !== 0) return;
         if (window.innerWidth > SIDEBAR_DRAWER_BREAKPOINT && e.pointerType === 'mouse') return;
+        e.preventDefault();
         const drag = startTouchDrag(e.clientX, e.clientY, e.pointerId);
 
         const move = (ev) => drag.move(ev, ev.clientX, ev.clientY);
@@ -551,6 +564,7 @@ function initTouchMaterialDrag(item) {
         item.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
             if (!touch) return;
+            e.preventDefault();
             const drag = startTouchDrag(touch.clientX, touch.clientY);
 
             const move = (ev) => {
@@ -1190,6 +1204,26 @@ function createMaterialBlockAtPoint(grid, clientY, data, options = {}) {
     });
 }
 
+function getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY = 0, snapInterval = PX_PER_30_MIN) {
+    const rect = grid.getBoundingClientRect();
+    const scaleY = rect.height > 0 ? rect.height / MAX_HEIGHT_PX : 1;
+    const offsetY = ((clientY - rect.top) / scaleY) - dragOffsetY;
+    const snappedY = Math.floor(offsetY / snapInterval) * snapInterval;
+    return Math.max(0, Math.min(snappedY, MAX_HEIGHT_PX - height));
+}
+
+function movePlanBlockAtPoint(block, clientX, clientY, dragOffsetY = 0) {
+    const dropTarget = document.elementFromPoint(clientX, clientY);
+    const grid = dropTarget?.closest?.('.day-grid');
+    if (!grid) return false;
+
+    const height = parseFloat(block.style.height) || getDefaultBlockHeight();
+    const top = getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY);
+    if (block.parentElement !== grid) grid.appendChild(block);
+    block.style.top = `${top}px`;
+    return true;
+}
+
 function createBlock(parentGrid, data) {
     const block = document.createElement('div');
     block.className = 'plan-block';
@@ -1210,7 +1244,7 @@ function createBlock(parentGrid, data) {
         <div class="resize-handle-bottom"></div>
     `;
     
-    block.draggable = true;
+    block.draggable = !isTouchPlannerMode();
     block.addEventListener('dragstart', (e) => {
         const rect = block.getBoundingClientRect();
         const blockData = {
@@ -1253,6 +1287,11 @@ function createBlock(parentGrid, data) {
 
     block.addEventListener('click', (e) => {
         if(isResizing || e.target.className.includes('resize')) return; 
+        if (isTouchPlannerMode()) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         openEditModal(block);
     });
 
@@ -1262,11 +1301,94 @@ function createBlock(parentGrid, data) {
         handle.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (isTouchPlannerMode()) return;
             if (!isResizing) openEditModal(block);
         });
     });
+    initTouchPlanBlock(block);
 
     parentGrid.appendChild(block);
+}
+
+function initTouchPlanBlock(block) {
+    block.addEventListener('pointerdown', (e) => {
+        if (!isTouchPlannerMode() || e.pointerType === 'mouse') return;
+        if (e.button && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const resizeHandle = e.target.closest('.resize-handle-top, .resize-handle-bottom');
+        if (resizeHandle) {
+            initTouchResize(e, resizeHandle.classList.contains('resize-handle-top') ? 'top' : 'bottom', block);
+            return;
+        }
+
+        const wasReady = touchReadyPlanBlock === block;
+        clearTouchReadyPlanBlock(block);
+        touchReadyPlanBlock = block;
+        block.classList.add('is-touch-ready');
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startGrid = block.parentElement;
+        const startTop = block.style.top;
+        let moved = false;
+        let dragging = false;
+        const rect = block.getBoundingClientRect();
+        const dragOffsetY = Math.max(0, startY - rect.top);
+        setPointerCaptureSafely(block, e.pointerId);
+
+        const move = (ev) => {
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            if (!dragging && Math.hypot(dx, dy) < 8) return;
+
+            ev.preventDefault();
+            if (!dragging) document.body.classList.add('material-dragging');
+            dragging = true;
+            moved = movePlanBlockAtPoint(block, ev.clientX, ev.clientY, dragOffsetY) || moved;
+        };
+
+        const end = (ev) => {
+            ev.preventDefault();
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', end);
+            document.removeEventListener('pointercancel', cancel);
+            releasePointerCaptureSafely(block, e.pointerId);
+            document.body.classList.remove('material-dragging');
+
+            if (dragging) {
+                if (!moved && startGrid) {
+                    startGrid.appendChild(block);
+                    block.style.top = startTop;
+                }
+                saveState();
+                updateDailyTodos();
+                return;
+            }
+
+            if (wasReady) {
+                openEditModal(block);
+                clearTouchReadyPlanBlock();
+            }
+        };
+
+        const cancel = () => {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', end);
+            document.removeEventListener('pointercancel', cancel);
+            releasePointerCaptureSafely(block, e.pointerId);
+            document.body.classList.remove('material-dragging');
+            if (startGrid) {
+                startGrid.appendChild(block);
+                block.style.top = startTop;
+            }
+        };
+
+        document.addEventListener('pointermove', move, { passive: false });
+        document.addEventListener('pointerup', end, { passive: false });
+        document.addEventListener('pointercancel', cancel, { passive: false });
+    });
 }
 
 function getDayBlockData(grid) {
@@ -1551,6 +1673,66 @@ function initResize(e, edge, block) {
 
     window.addEventListener('mousemove', resize);
     window.addEventListener('mouseup', stopResize);
+}
+
+function initTouchResize(e, edge, block) {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    document.body.classList.add('material-dragging');
+
+    const startY = e.clientY;
+    const startTop = parseFloat(block.style.top) || 0;
+    const startHeight = parseFloat(block.style.height) || getDefaultBlockHeight();
+    setPointerCaptureSafely(block, e.pointerId);
+
+    const resize = (ev) => {
+        ev.preventDefault();
+        const dy = ev.clientY - startY;
+
+        if (edge === 'bottom') {
+            const newHeight = Math.max(PX_PER_10_MIN, startHeight + dy);
+            let snappedHeight = Math.round(newHeight / PX_PER_10_MIN) * PX_PER_10_MIN;
+            if (startTop + snappedHeight > MAX_HEIGHT_PX) snappedHeight = MAX_HEIGHT_PX - startTop;
+            block.style.height = `${snappedHeight}px`;
+            return;
+        }
+
+        const newTop = Math.max(0, startTop + dy);
+        const snappedTop = Math.round(newTop / PX_PER_10_MIN) * PX_PER_10_MIN;
+        const snappedHeight = startHeight + (startTop - snappedTop);
+        if (snappedHeight >= PX_PER_10_MIN) {
+            block.style.top = `${snappedTop}px`;
+            block.style.height = `${snappedHeight}px`;
+        }
+    };
+
+    const stopResize = (ev) => {
+        ev.preventDefault();
+        document.removeEventListener('pointermove', resize);
+        document.removeEventListener('pointerup', stopResize);
+        document.removeEventListener('pointercancel', cancelResize);
+        releasePointerCaptureSafely(block, e.pointerId);
+        document.body.classList.remove('material-dragging');
+        saveState();
+        updateDailyTodos();
+        setTimeout(() => { isResizing = false; }, 100);
+    };
+
+    const cancelResize = () => {
+        document.removeEventListener('pointermove', resize);
+        document.removeEventListener('pointerup', stopResize);
+        document.removeEventListener('pointercancel', cancelResize);
+        releasePointerCaptureSafely(block, e.pointerId);
+        document.body.classList.remove('material-dragging');
+        block.style.top = `${startTop}px`;
+        block.style.height = `${startHeight}px`;
+        setTimeout(() => { isResizing = false; }, 100);
+    };
+
+    document.addEventListener('pointermove', resize, { passive: false });
+    document.addEventListener('pointerup', stopResize, { passive: false });
+    document.addEventListener('pointercancel', cancelResize, { passive: false });
 }
 
 // --- 自動集計 ---
