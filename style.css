@@ -200,13 +200,16 @@ body.material-dragging .planner-board {
 
     #sortable-folder-list,
     .sortable-item,
-    .material-item,
+    .material-item {
+        touch-action: none;
+    }
+
     .plan-block,
     .resize-handle-top,
     .resize-handle-bottom,
     .day-grid,
     .time-grid {
-        touch-action: none;
+        touch-action: pan-y;
     }
 
     .resize-handle-top,

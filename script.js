@@ -1084,6 +1084,32 @@ function initTimetable() {
         }
     });
 
+    timetable.addEventListener('pointerdown', (e) => {
+        if (!isTouchPlannerMode() || e.pointerType === 'mouse') return;
+        if (e.target.closest('.plan-block, button, input, textarea, select')) return;
+        const grid = e.target.closest('.day-grid');
+        if (!grid) return;
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+
+        const clearOnTap = (ev) => {
+            document.removeEventListener('pointerup', clearOnTap);
+            document.removeEventListener('pointercancel', cancelClear);
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            if (Math.hypot(dx, dy) < 8) clearTouchReadyPlanBlock();
+        };
+
+        const cancelClear = () => {
+            document.removeEventListener('pointerup', clearOnTap);
+            document.removeEventListener('pointercancel', cancelClear);
+        };
+
+        document.addEventListener('pointerup', clearOnTap, { passive: true });
+        document.addEventListener('pointercancel', cancelClear, { passive: true });
+    });
+
     timetable.addEventListener('input', (e) => {
         const t = e.target;
         if(t.classList.contains('todo-time') || t.tagName === 'TEXTAREA' || t.classList.contains('daily-total') || t.classList.contains('weekly-achieved') || t.classList.contains('weekly-total')) {
@@ -1324,26 +1350,28 @@ function initTouchPlanBlock(block) {
     block.addEventListener('pointerdown', (e) => {
         if (!isTouchPlannerMode() || e.pointerType === 'mouse') return;
         if (e.button && e.button !== 0) return;
-        e.preventDefault();
         e.stopPropagation();
 
-        const resizeHandle = e.target.closest('.resize-handle-top, .resize-handle-bottom');
-        const resizeEdge = resizeHandle?.classList.contains('resize-handle-top') ? 'top' : (resizeHandle ? 'bottom' : null);
-        clearTouchReadyPlanBlock(block);
-        touchReadyPlanBlock = block;
-        block.classList.add('is-touch-ready');
-
+        const wasReady = touchReadyPlanBlock === block;
         const startX = e.clientX;
         const startY = e.clientY;
+        const resizeHandle = e.target.closest('.resize-handle-top, .resize-handle-bottom');
+        const resizeEdge = resizeHandle?.classList.contains('resize-handle-top') ? 'top' : (resizeHandle ? 'bottom' : null);
         const startGrid = block.parentElement;
         const startTop = block.style.top;
         const startTopPx = parseFloat(block.style.top) || 0;
         const startHeight = parseFloat(block.style.height) || getDefaultBlockHeight();
         let gesture = null;
         let moved = false;
+        let longPressReady = false;
         const rect = block.getBoundingClientRect();
         const dragOffsetY = Math.max(0, startY - rect.top);
-        setPointerCaptureSafely(block, e.pointerId);
+
+        const selectBlock = () => {
+            clearTouchReadyPlanBlock(block);
+            touchReadyPlanBlock = block;
+            block.classList.add('is-touch-ready');
+        };
 
         const resizeBlock = (clientY) => {
             const dy = clientY - startY;
@@ -1363,16 +1391,42 @@ function initTouchPlanBlock(block) {
             block.style.height = `${bottom - snappedTop}px`;
         };
 
+        const longPressTimer = !resizeEdge ? setTimeout(() => {
+            longPressReady = true;
+            selectBlock();
+            document.body.classList.add('material-dragging');
+            setPointerCaptureSafely(block, e.pointerId);
+        }, 420) : null;
+
+        if (wasReady && resizeEdge) {
+            e.preventDefault();
+            document.body.classList.add('material-dragging');
+            setPointerCaptureSafely(block, e.pointerId);
+        }
+
         const move = (ev) => {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
+
+            if (!resizeEdge && !longPressReady && Math.hypot(dx, dy) >= 8) {
+                clearTimeout(longPressTimer);
+                cleanup();
+                return;
+            }
+
             if (!gesture && Math.hypot(dx, dy) < 8) return;
 
-            ev.preventDefault();
             if (!gesture) {
-                document.body.classList.add('material-dragging');
-                gesture = resizeEdge && Math.abs(dy) > Math.abs(dx) ? 'resize' : 'move';
+                if (wasReady && resizeEdge) {
+                    gesture = 'resize';
+                } else if (longPressReady) {
+                    gesture = 'move';
+                } else {
+                    return;
+                }
             }
+
+            ev.preventDefault();
 
             if (gesture === 'resize') {
                 resizeBlock(ev.clientY);
@@ -1382,15 +1436,20 @@ function initTouchPlanBlock(block) {
             moved = movePlanBlockAtPoint(block, ev.clientX, ev.clientY, dragOffsetY) || moved;
         };
 
-        const end = (ev) => {
-            ev.preventDefault();
+        const cleanup = () => {
+            clearTimeout(longPressTimer);
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', end);
             document.removeEventListener('pointercancel', cancel);
             releasePointerCaptureSafely(block, e.pointerId);
             document.body.classList.remove('material-dragging');
+        };
+
+        const end = (ev) => {
+            cleanup();
 
             if (gesture === 'move') {
+                ev.preventDefault();
                 if (!moved && startGrid) {
                     startGrid.appendChild(block);
                     block.style.top = startTop;
@@ -1400,22 +1459,26 @@ function initTouchPlanBlock(block) {
             }
 
             if (gesture === 'resize') {
+                ev.preventDefault();
                 saveState();
                 return;
             }
 
-            if (!gesture) {
-                openEditModal(block);
-                clearTouchReadyPlanBlock();
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            if (Math.hypot(dx, dy) < 8) {
+                ev.preventDefault();
+                if (wasReady) {
+                    openEditModal(block);
+                    clearTouchReadyPlanBlock();
+                } else {
+                    selectBlock();
+                }
             }
         };
 
         const cancel = () => {
-            document.removeEventListener('pointermove', move);
-            document.removeEventListener('pointerup', end);
-            document.removeEventListener('pointercancel', cancel);
-            releasePointerCaptureSafely(block, e.pointerId);
-            document.body.classList.remove('material-dragging');
+            cleanup();
             if (startGrid) {
                 startGrid.appendChild(block);
                 block.style.top = startTop;
