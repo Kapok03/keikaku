@@ -39,7 +39,7 @@ body.material-dragging .planner-board {
 .material-item:active { opacity: 0.8; transform: translateY(0); }
 .sidebar.delete-drop-target { outline: 2px dashed var(--danger); outline-offset: -8px; background: rgba(240, 109, 109, 0.08); }
 .color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex-shrink: 0;}
-.material-drag-ghost { position: fixed; z-index: 3000; pointer-events: none; opacity: 0.85; transform: translate(-50%, -50%); min-width: 120px; }
+.material-drag-ghost { position: fixed; left: 0; top: 0; z-index: 3000; pointer-events: none; opacity: 0.85; transform: translate3d(0, 0, 0) translate(-50%, -50%); min-width: 120px; will-change: transform; }
 
 .controls-bar { display: flex; justify-content: space-between; margin-bottom: 16px; align-items: center; gap: 10px;}
 .btn { padding: 8px 16px; border-radius: var(--radius-pill); border: 1px solid var(--border-color); cursor: pointer; background: #fff; font-weight: bold; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; color: var(--text-color); box-shadow: 0 1px 2px rgba(0,0,0,0.05); white-space: nowrap;}
@@ -141,6 +141,7 @@ body.material-dragging .planner-board {
 .plan-block.is-touch-ready .resize-handle-bottom {
     touch-action: none;
 }
+body.material-dragging .plan-block.is-touch-ready { will-change: top, height; }
 .resize-handle-top, .resize-handle-bottom { position: absolute; left: 0; width: 100%; height: 8px; cursor: ns-resize; z-index: 10;}
 .resize-handle-top { top: 0; } .resize-handle-bottom { bottom: 0; }
 .plan-block-content { position: relative; z-index: 2; pointer-events: none; display: inline-block;}
@@ -153,6 +154,10 @@ body.material-dragging .planner-board {
 .modal-content { background: #fff; padding: 24px; border-radius: var(--radius-lg); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid #E2E8F0; max-height: 90vh; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;}
 .modal-content h4 { margin: 0 0 16px 0; color: #1E293B; font-size: 18px;}
 .modal-buttons { display: flex; justify-content: space-between; margin-top: 24px;}
+.edit-time-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.edit-time-range label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: bold; }
+.edit-time-range input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); outline: none; font-family: inherit; }
+.edit-time-range input:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .settings-box { background: #F8FAFC; padding: 16px; border-radius: var(--radius-md); border: 1px solid #E2E8F0;}
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 13px; font-weight: bold; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
 .setting-row:last-child { border-bottom: none; }

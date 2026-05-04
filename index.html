@@ -96,6 +96,16 @@
     <div id="edit-modal" class="modal-hidden">
         <div class="modal-content" style="width: 300px;">
             <h4>ブロックの編集</h4>
+            <div class="edit-time-range">
+                <label>
+                    開始:
+                    <input type="text" id="edit-start-time" inputmode="numeric" placeholder="5:00">
+                </label>
+                <label>
+                    終了:
+                    <input type="text" id="edit-end-time" inputmode="numeric" placeholder="6:00">
+                </label>
+            </div>
             <label style="display: block; margin-bottom: 16px;">時間(分): <input type="number" id="edit-duration" step="10" min="10" style="width: 80px;"></label>
             <label style="display: block; margin-bottom: 16px;">
                 表示する文字:
@@ -283,6 +293,6 @@
           });
       });
     }
-</script>
+    </script>
 </body>
 </html>

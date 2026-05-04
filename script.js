@@ -4,6 +4,7 @@ const PX_PER_10_MIN = 10;
 const MAX_HEIGHT_PX = 1320; 
 const LOCAL_STORAGE_KEY = 'weeklyPlannerUltimatePro'; 
 const SIDEBAR_DRAWER_BREAKPOINT = 1180;
+const MATERIAL_TOUCH_DRAG_THRESHOLD = 4;
 
 let undoStack = [];
 let redoStack = [];
@@ -341,16 +342,43 @@ function initButtons() {
     // ブロック時間編集の更新と削除
     document.getElementById('btn-update')?.addEventListener('click', () => {
         if(currentEditingBlock) {
-            const newMins = parseInt(document.getElementById('edit-duration').value, 10);
-            if(newMins > 0) {
-                let newHeightPx = (newMins / 60) * PX_PER_HOUR;
-                const currentTop = parseFloat(currentEditingBlock.style.top);
-                if (currentTop + newHeightPx > MAX_HEIGHT_PX) { newHeightPx = MAX_HEIGHT_PX - currentTop; alert('最大高さを超えるため調整しました。'); }
-                currentEditingBlock.style.height = newHeightPx + 'px';
-                setBlockNote(currentEditingBlock, document.getElementById('edit-note').value);
-                saveState(); 
-                updateDailyTodos();
+            const startTimeValue = document.getElementById('edit-start-time')?.value || '';
+            const endTimeValue = document.getElementById('edit-end-time')?.value || '';
+            const startTime = parseScheduleTimeInput(startTimeValue);
+            const endTime = parseScheduleTimeInput(endTimeValue);
+
+            if (startTimeValue.trim() || endTimeValue.trim()) {
+                if (startTime === null || endTime === null) {
+                    alert('開始・終了時刻は「9:00」や「翌1:00」の形で入力してください。');
+                    return;
+                }
+
+                let adjustedEnd = endTime <= startTime ? endTime + (24 * 60) : endTime;
+                if (startTime < 0 || startTime >= MAX_HEIGHT_PX || adjustedEnd <= startTime) {
+                    alert('開始・終了時刻を確認してください。');
+                    return;
+                }
+
+                if (adjustedEnd > MAX_HEIGHT_PX) {
+                    adjustedEnd = MAX_HEIGHT_PX;
+                    alert('最大時間を超えるため調整しました。');
+                }
+
+                currentEditingBlock.style.top = `${startTime}px`;
+                currentEditingBlock.style.height = `${adjustedEnd - startTime}px`;
+            } else {
+                const newMins = parseInt(document.getElementById('edit-duration').value, 10);
+                if(newMins > 0) {
+                    let newHeightPx = (newMins / 60) * PX_PER_HOUR;
+                    const currentTop = parseFloat(currentEditingBlock.style.top);
+                    if (currentTop + newHeightPx > MAX_HEIGHT_PX) { newHeightPx = MAX_HEIGHT_PX - currentTop; alert('最大高さを超えるため調整しました。'); }
+                    currentEditingBlock.style.height = newHeightPx + 'px';
+                }
             }
+
+            setBlockNote(currentEditingBlock, document.getElementById('edit-note').value);
+            saveState(); 
+            updateDailyTodos();
         }
         closeEditModal();
     });
@@ -493,10 +521,15 @@ function initTouchMaterialDrag(item) {
         let isDragging = false;
         let ghost = null;
 
+        const moveGhostTo = (clientX, clientY) => {
+            if (!ghost) return;
+            ghost.style.transform = `translate3d(${clientX}px, ${clientY}px, 0) translate(-50%, -50%)`;
+        };
+
         const move = (ev, clientX, clientY) => {
             const dx = clientX - startX;
             const dy = clientY - startY;
-            if (!isDragging && Math.hypot(dx, dy) < 8) return;
+            if (!isDragging && Math.hypot(dx, dy) < MATERIAL_TOUCH_DRAG_THRESHOLD) return;
 
             ev.preventDefault();
             if (!isDragging) {
@@ -506,13 +539,11 @@ function initTouchMaterialDrag(item) {
                 ghost = item.cloneNode(true);
                 ghost.classList.add('material-drag-ghost');
                 document.body.appendChild(ghost);
+                moveGhostTo(clientX, clientY);
                 setPointerCaptureSafely(item, pointerId);
             }
 
-            if (ghost) {
-                ghost.style.left = `${clientX}px`;
-                ghost.style.top = `${clientY}px`;
-            }
+            moveGhostTo(clientX, clientY);
         };
 
         const end = (ev, clientX, clientY) => {
@@ -957,6 +988,22 @@ function formatScheduleTime(minute) {
     return `${prefix}${displayHour}:${String(displayMinute).padStart(2, '0')}`;
 }
 
+function parseScheduleTimeInput(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+
+    const normalized = raw.replace(/^翌日?/, '翌').replace(/[：.]/g, ':');
+    const match = normalized.match(/^(翌)?\s*(\d{1,2})(?::(\d{1,2}))?$/);
+    if (!match) return null;
+
+    let hour = parseInt(match[2], 10);
+    const minute = match[3] === undefined ? 0 : parseInt(match[3], 10);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute >= 60) return null;
+
+    if (match[1] || hour < 5) hour += 24;
+    return (hour * 60 + minute) - (5 * 60);
+}
+
 function renderSchedulePanelCard(container, item, statusText) {
     if (!container) return;
 
@@ -1251,22 +1298,40 @@ function getPlannerGridAtPoint(clientX, clientY) {
     return isValidPlannerGrid(grid) ? grid : null;
 }
 
-function getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY = 0, snapInterval = PX_PER_30_MIN) {
-    const rect = grid.getBoundingClientRect();
+function getPlannerGridRects() {
+    return Array.from(document.querySelectorAll('.day-grid')).map(grid => ({
+        grid,
+        rect: grid.getBoundingClientRect()
+    })).filter(item => item.rect.width > 0 && item.rect.height > 0);
+}
+
+function getPlannerGridItemAtPointFromRects(clientX, clientY, gridRects) {
+    return gridRects.find(({ rect }) => (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+    ));
+}
+
+function getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY = 0, snapInterval = PX_PER_30_MIN, cachedRect = null) {
+    const rect = cachedRect || grid.getBoundingClientRect();
     const scaleY = rect.height > 0 ? rect.height / MAX_HEIGHT_PX : 1;
     const offsetY = ((clientY - rect.top) / scaleY) - dragOffsetY;
     const snappedY = Math.floor(offsetY / snapInterval) * snapInterval;
     return Math.max(0, Math.min(snappedY, MAX_HEIGHT_PX - height));
 }
 
-function movePlanBlockAtPoint(block, clientX, clientY, dragOffsetY = 0) {
-    const grid = getPlannerGridAtPoint(clientX, clientY);
+function movePlanBlockAtPoint(block, clientX, clientY, dragOffsetY = 0, gridRects = null) {
+    const gridItem = gridRects ? getPlannerGridItemAtPointFromRects(clientX, clientY, gridRects) : null;
+    const grid = gridItem?.grid || (!gridRects ? getPlannerGridAtPoint(clientX, clientY) : null);
     if (!grid) return false;
 
     const height = parseFloat(block.style.height) || getDefaultBlockHeight();
-    const top = getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY);
+    const top = getSnappedBlockTopFromPoint(grid, clientY, height, dragOffsetY, PX_PER_30_MIN, gridItem?.rect);
     if (block.parentElement !== grid) grid.appendChild(block);
-    block.style.top = `${top}px`;
+    const nextTop = `${top}px`;
+    if (block.style.top !== nextTop) block.style.top = nextTop;
     return true;
 }
 
@@ -1371,8 +1436,11 @@ function initTouchPlanBlock(block) {
         const startTop = block.style.top;
         const startTopPx = parseFloat(block.style.top) || 0;
         const startHeight = parseFloat(block.style.height) || getDefaultBlockHeight();
+        let gridRects = null;
         let gesture = null;
         let moved = false;
+        let pendingMovePoint = null;
+        let moveFrame = null;
         const rect = block.getBoundingClientRect();
         const dragOffsetY = Math.max(0, startY - rect.top);
 
@@ -1400,9 +1468,16 @@ function initTouchPlanBlock(block) {
             block.style.height = `${bottom - snappedTop}px`;
         };
 
+        const applyPendingMove = () => {
+            moveFrame = null;
+            if (!pendingMovePoint) return;
+            moved = movePlanBlockAtPoint(block, pendingMovePoint.x, pendingMovePoint.y, dragOffsetY, gridRects) || moved;
+        };
+
         if (wasReady) {
             e.preventDefault();
             document.body.classList.add('material-dragging');
+            gridRects = getPlannerGridRects();
             setPointerCaptureSafely(block, e.pointerId);
         }
 
@@ -1418,7 +1493,8 @@ function initTouchPlanBlock(block) {
             if (!gesture && Math.hypot(dx, dy) < 8) return;
 
             if (!gesture) {
-                if (wasReady && resizeEdge) {
+                const hasHorizontalMove = Math.abs(dx) >= 6;
+                if (wasReady && resizeEdge && !hasHorizontalMove) {
                     gesture = 'resize';
                 } else if (wasReady) {
                     gesture = 'move';
@@ -1434,10 +1510,15 @@ function initTouchPlanBlock(block) {
                 return;
             }
 
-            moved = movePlanBlockAtPoint(block, ev.clientX, ev.clientY, dragOffsetY) || moved;
+            pendingMovePoint = { x: ev.clientX, y: ev.clientY };
+            if (!moveFrame) moveFrame = requestAnimationFrame(applyPendingMove);
         };
 
         const cleanup = () => {
+            if (moveFrame) {
+                cancelAnimationFrame(moveFrame);
+                applyPendingMove();
+            }
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', end);
             document.removeEventListener('pointercancel', cancel);
@@ -1446,6 +1527,9 @@ function initTouchPlanBlock(block) {
         };
 
         const end = (ev) => {
+            if (gesture === 'move') {
+                pendingMovePoint = { x: ev.clientX, y: ev.clientY };
+            }
             cleanup();
 
             if (gesture === 'move') {
@@ -2340,11 +2424,16 @@ function parseICalDate(line) {
 
 const modal = document.getElementById('edit-modal');
 const timeInput = document.getElementById('edit-duration');
+const editStartTimeInput = document.getElementById('edit-start-time');
+const editEndTimeInput = document.getElementById('edit-end-time');
 const noteInput = document.getElementById('edit-note');
 
 function openEditModal(block) {
     currentEditingBlock = block;
+    const top = parseFloat(block.style.top) || 0;
     const mins = Math.round((parseFloat(block.style.height) / PX_PER_HOUR) * 60);
+    if (editStartTimeInput) editStartTimeInput.value = formatScheduleTime(top);
+    if (editEndTimeInput) editEndTimeInput.value = formatScheduleTime(top + mins);
     timeInput.value = mins;
     if (noteInput) noteInput.value = block.dataset.note || '';
     modal.classList.remove('modal-hidden');
@@ -2352,6 +2441,8 @@ function openEditModal(block) {
 function closeEditModal() {
     modal.classList.add('modal-hidden');
     currentEditingBlock = null;
+    if (editStartTimeInput) editStartTimeInput.value = '';
+    if (editEndTimeInput) editEndTimeInput.value = '';
     if (noteInput) noteInput.value = '';
 }
 
