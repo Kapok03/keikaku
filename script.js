@@ -4,7 +4,7 @@ const PX_PER_10_MIN = 10;
 const MAX_HEIGHT_PX = 1320; 
 const LOCAL_STORAGE_KEY = 'weeklyPlannerUltimatePro'; 
 const SIDEBAR_DRAWER_BREAKPOINT = 1180;
-const MATERIAL_TOUCH_DRAG_THRESHOLD = 4;
+const MATERIAL_TOUCH_DRAG_THRESHOLD = 2;
 
 let undoStack = [];
 let redoStack = [];
@@ -517,6 +517,16 @@ function initTouchMaterialDrag(item) {
         suppressClick = false;
     }, true);
 
+    const createMaterialDragGhost = () => {
+        const ghost = document.createElement('div');
+        ghost.className = 'material-drag-ghost';
+        ghost.innerHTML = `
+            <span class="color-dot" style="background:${item.dataset.color || '#6f9de7'};"></span>
+            <span>${escapeHtml(item.dataset.name || '')}</span>
+        `;
+        return ghost;
+    };
+
     const startTouchDrag = (startX, startY, pointerId) => {
         let isDragging = false;
         let ghost = null;
@@ -535,12 +545,10 @@ function initTouchMaterialDrag(item) {
             if (!isDragging) {
                 isDragging = true;
                 suppressClick = true;
-                document.body.classList.add('material-dragging');
-                ghost = item.cloneNode(true);
-                ghost.classList.add('material-drag-ghost');
+                document.body.classList.add('material-list-dragging');
+                ghost = createMaterialDragGhost();
                 document.body.appendChild(ghost);
                 moveGhostTo(clientX, clientY);
-                setPointerCaptureSafely(item, pointerId);
             }
 
             moveGhostTo(clientX, clientY);
@@ -548,7 +556,7 @@ function initTouchMaterialDrag(item) {
 
         const end = (ev, clientX, clientY) => {
             if (ghost) ghost.remove();
-            document.body.classList.remove('material-dragging');
+            document.body.classList.remove('material-list-dragging');
             if (!isDragging) return;
 
             ev.preventDefault();
@@ -576,6 +584,7 @@ function initTouchMaterialDrag(item) {
         if (e.button && e.button !== 0) return;
         if (window.innerWidth > SIDEBAR_DRAWER_BREAKPOINT && e.pointerType === 'mouse') return;
         e.preventDefault();
+        setPointerCaptureSafely(item, e.pointerId);
         const drag = startTouchDrag(e.clientX, e.clientY, e.pointerId);
 
         const move = (ev) => drag.move(ev, ev.clientX, ev.clientY);
@@ -2257,7 +2266,7 @@ function loadLocalData() {
 function exportAllData() {
     saveLocalData(); 
     const dataStr = localStorage.getItem(LOCAL_STORAGE_KEY) || "{}";
-    downloadDataFile(JSON.parse(dataStr), 'AllDATA.data');
+    downloadDataFile(JSON.parse(dataStr), 'Alldata.data');
     document.getElementById('export-modal').classList.add('modal-hidden');
 }
 
