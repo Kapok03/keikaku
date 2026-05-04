@@ -37,7 +37,9 @@ let materials = [
 let autoAddRules = []; 
 let appSettings = {
     confirmDayReset: true,
-    defaultBlockMinutes: 60
+    defaultBlockMinutes: 60,
+    exportTodayHighlight: true,
+    exportCurrentTimeLine: true
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -650,19 +652,27 @@ function getDefaultBlockHeight() {
 function initAppSettingsModal() {
     const confirmDayReset = document.getElementById('setting-confirm-day-reset');
     const defaultMinutes = document.getElementById('setting-default-minutes');
+    const exportTodayHighlight = document.getElementById('setting-export-today-highlight');
+    const exportCurrentTimeLine = document.getElementById('setting-export-current-time-line');
 
     if (confirmDayReset) confirmDayReset.checked = !!appSettings.confirmDayReset;
     if (defaultMinutes) defaultMinutes.value = getDefaultBlockHeight();
+    if (exportTodayHighlight) exportTodayHighlight.checked = appSettings.exportTodayHighlight === false;
+    if (exportCurrentTimeLine) exportCurrentTimeLine.checked = appSettings.exportCurrentTimeLine === false;
 }
 
 function saveAppSettingsFromModal() {
     const confirmDayReset = document.getElementById('setting-confirm-day-reset');
     const defaultMinutes = document.getElementById('setting-default-minutes');
+    const exportTodayHighlight = document.getElementById('setting-export-today-highlight');
+    const exportCurrentTimeLine = document.getElementById('setting-export-current-time-line');
     const minutes = parseInt(defaultMinutes?.value, 10);
 
     appSettings = {
         confirmDayReset: !!confirmDayReset?.checked,
-        defaultBlockMinutes: Math.max(1, Number.isFinite(minutes) ? minutes : 60)
+        defaultBlockMinutes: Math.max(1, Number.isFinite(minutes) ? minutes : 60),
+        exportTodayHighlight: exportTodayHighlight?.checked !== false,
+        exportCurrentTimeLine: exportCurrentTimeLine?.checked !== false
     };
     saveLocalData();
     document.getElementById('app-settings-modal')?.classList.add('modal-hidden');
@@ -1981,7 +1991,17 @@ function getPlannerFileBaseName() {
     return `${formatDate(startDate)}~${formatDate(endDate)}の計画表`;
 }
 
-async function capturePlannerCanvas() {
+function applyImageExportSettings(area, format) {
+    if (format !== 'image') return;
+    area.classList.toggle('hide-today-highlight', appSettings.exportTodayHighlight === false);
+    area.classList.toggle('hide-current-time-line', appSettings.exportCurrentTimeLine === false);
+}
+
+function clearImageExportSettings(area) {
+    area.classList.remove('hide-today-highlight', 'hide-current-time-line');
+}
+
+async function capturePlannerCanvas(format) {
     const area = document.getElementById('capture-area');
     if (!area) throw new Error('capture-area not found');
     if (typeof html2canvas !== 'function') {
@@ -1990,11 +2010,13 @@ async function capturePlannerCanvas() {
     updateDailyTodos();
     autosizeTodoTextareas(area);
     area.classList.add('is-exporting');
+    applyImageExportSettings(area, format);
     try {
         await new Promise(resolve => requestAnimationFrame(resolve));
         return await html2canvas(area, { scale: 2, windowWidth: area.scrollWidth, windowHeight: area.scrollHeight });
     } finally {
         area.classList.remove('is-exporting');
+        clearImageExportSettings(area);
         updatePlannerScale();
     }
 }
@@ -2005,7 +2027,7 @@ async function downloadPlanner(format) {
 
     try {
         setStatusMessage('DL準備中...');
-        const canvas = await capturePlannerCanvas();
+        const canvas = await capturePlannerCanvas(format);
 
         if (format === 'image') {
             const link = document.createElement('a');
@@ -2106,7 +2128,9 @@ function loadLocalData() {
     if(data.appSettings) {
         appSettings = {
             confirmDayReset: data.appSettings.confirmDayReset ?? appSettings.confirmDayReset,
-            defaultBlockMinutes: data.appSettings.defaultBlockMinutes ?? appSettings.defaultBlockMinutes
+            defaultBlockMinutes: data.appSettings.defaultBlockMinutes ?? appSettings.defaultBlockMinutes,
+            exportTodayHighlight: data.appSettings.exportTodayHighlight ?? appSettings.exportTodayHighlight,
+            exportCurrentTimeLine: data.appSettings.exportCurrentTimeLine ?? appSettings.exportCurrentTimeLine
         };
     }
     if(typeof initSidebar === 'function') initSidebar();

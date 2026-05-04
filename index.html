@@ -32,8 +32,8 @@
         <div class="controls-bar">
             <div style="display: flex; gap: 8px;">
                 <button class="btn sidebar-toggle-btn" id="sidebar-toggle-btn" type="button" aria-controls="sidebar" aria-expanded="true">教材</button>
-                <button class="btn" id="undo-btn">↩ Undo</button>
-                <button class="btn" id="redo-btn">↪ Redo</button>
+                <button class="btn" id="undo-btn">↩ 元に戻す</button>
+                <button class="btn" id="redo-btn">↪ やり直す</button>
             </div>
             <div style="display: flex; gap: 8px;">
                 <button class="btn btn-danger" id="reset-planner-btn">週間計画票をリセット</button>
@@ -46,7 +46,7 @@
             <div style="display: flex; gap: 8px; align-items: center;">
                 <span style="font-weight: bold; font-size: 13px; color: #4A5568;">範囲:</span>
                 <input type="date" id="start-date-input" class="date-input">
-                <button class="btn" id="settings-btn">自動入力設定</button>
+                <button class="btn" id="settings-btn">一括入力設定</button>
                 <button class="btn icon-btn" id="app-settings-btn" title="設定" aria-label="設定">⚙</button>
             </div>
         </div>
@@ -175,19 +175,6 @@
         </div>
     </div>
 
-    <div id="gcal-modal" class="modal-hidden">
-        <div class="modal-content" style="width: 350px;">
-            <h4 style="margin-bottom: 8px;">Googleカレンダー連携</h4>
-            <p style="font-size: 11px; color: #718096; margin-bottom: 12px;">Googleカレンダーの設定 ＞ 「非公開URL（iCal形式）」を貼り付けてください。<br>※今週の予定のみが自動で配置されます。</p>
-            <input type="text" id="gcal-url-input" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" style="width: 100%; padding: 8px; border: 1px solid #E2E8F0; border-radius: 4px; font-size: 12px; margin-bottom: 12px; box-sizing: border-box;">
-            <div id="gcal-status" style="font-size: 12px; color: #3B82F6; font-weight: bold; text-align: center;"></div>
-            <div class="modal-buttons">
-                <button id="btn-gcal-sync" class="btn btn-primary">同期する</button>
-                <button id="btn-gcal-close" class="btn">キャンセル</button>
-            </div>
-        </div>
-    </div>
-
     <div id="export-modal" class="modal-hidden">
         <div class="modal-content" style="width: 300px; text-align: center;">
             <h4 style="margin-bottom: 20px;">書き出し形式の選択</h4>
@@ -217,8 +204,8 @@
 
     <div id="settings-modal" class="modal-hidden">
         <div class="modal-content" style="width: 380px;">
-            <h4 style="margin-bottom: 8px;">自動入力の設定</h4>
-            <p style="font-size: 12px; color: #718096;">決まった時間に自動で入力する設定を作れます。</p>
+            <h4 style="margin-bottom: 8px;">一括入力の設定</h4>
+            <p style="font-size: 12px; color: #718096;">決まった時間に一括で入力する設定を作れます。</p>
             
             <div id="auto-add-list" style="margin: 16px 0; max-height: 140px; overflow-y: auto;"></div>
 
@@ -249,11 +236,19 @@
                     <input type="checkbox" id="setting-confirm-day-reset">
                 </label>
                 <label class="setting-row">
-                    <span>教材の初期配置時間</span>
+                    <span>教材の配置時間</span>
                     <span class="setting-inline-input">
                         <input type="number" id="setting-default-minutes" min="1" step="1">
                         <span>分</span>
                     </span>
+                </label>
+                <label class="setting-row">
+                    <span>画像に今日の強調色を含める</span>
+                    <input type="checkbox" id="setting-export-today-highlight">
+                </label>
+                <label class="setting-row">
+                    <span>画像に現在時刻の赤いバーを含める</span>
+                    <input type="checkbox" id="setting-export-current-time-line">
                 </label>
             </div>
             <div class="modal-buttons" style="margin-top: 24px;">
