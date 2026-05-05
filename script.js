@@ -1801,7 +1801,7 @@ function moveNowNextPanelForViewport() {
     const toggle = document.getElementById('sidebar-toggle-btn');
     if (toggle) {
         toggle.setAttribute('aria-expanded', 'true');
-        toggle.innerText = '教材';
+        toggle.innerText = '教材を閉じる';
     }
 }
 
