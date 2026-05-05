@@ -1770,7 +1770,7 @@ function updateSidebarDrawerState() {
     document.body.classList.toggle('sidebar-drawer-open', !!isOpen);
     if (toggle) {
         toggle.setAttribute('aria-expanded', String(!!isOpen));
-        toggle.innerText = isOpen ? '教材' : '教材を開く';
+        toggle.innerText = isOpen ? '教材を閉じる' : '教材を開く';
     }
 }
 
