@@ -222,8 +222,8 @@
             <div class="settings-box">
                 <div class="manage-form-grid">
                     <span>教材:</span> <select id="auto-mat-select"></select>
-                    <span>開始:</span> <select id="auto-start-time"></select>
-                    <span>終了:</span> <select id="auto-end-time"></select>
+                    <span>開始:</span> <input type="time" id="auto-start-time" value="05:00" step="1800">
+                    <span>終了:</span> <input type="time" id="auto-end-time" value="06:00" step="1800">
                 </div>
                 <div style="text-align: right; margin-top: 12px;">
                     <button class="btn btn-primary" id="add-auto-rule-btn" style="padding: 6px 12px; font-size: 12px;">ルールを追加</button>
@@ -251,14 +251,6 @@
                         <input type="number" id="setting-default-minutes" min="1" step="1">
                         <span>分</span>
                     </span>
-                </label>
-                <label class="setting-row">
-                    <span>画像に今日の強調色を含める</span>
-                    <input type="checkbox" id="setting-export-today-highlight">
-                </label>
-                <label class="setting-row">
-                    <span>画像に現在時刻の赤いバーを含める</span>
-                    <input type="checkbox" id="setting-export-current-time-line">
                 </label>
             </div>
             <div class="modal-buttons" style="margin-top: 24px;">

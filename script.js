@@ -38,9 +38,7 @@ let materials = [
 let autoAddRules = []; 
 let appSettings = {
     confirmDayReset: true,
-    defaultBlockMinutes: 60,
-    exportTodayHighlight: true,
-    exportCurrentTimeLine: true
+    defaultBlockMinutes: 60
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -277,6 +275,7 @@ function initButtons() {
     document.getElementById('btn-gcal-close')?.addEventListener('click', () => document.getElementById('gcal-modal').classList.add('modal-hidden'));
     document.getElementById('btn-mat-cancel')?.addEventListener('click', () => document.getElementById('mat-edit-modal').classList.add('modal-hidden'));
     document.getElementById('btn-cancel')?.addEventListener('click', closeEditModal); 
+    initEditTimeSync();
 
     // 計画票のDL
     document.getElementById('download-pdf-btn')?.addEventListener('click', () => downloadPlanner('pdf'));
@@ -323,8 +322,10 @@ function initButtons() {
     // 自動追加設定の追加と適用
     document.getElementById('add-auto-rule-btn')?.addEventListener('click', () => {
         const matId = document.getElementById('auto-mat-select').value;
-        const start = parseInt(document.getElementById('auto-start-time').value, 10);
-        const end = parseInt(document.getElementById('auto-end-time').value, 10);
+        const start = parseScheduleTimeInput(document.getElementById('auto-start-time').value);
+        const end = parseScheduleTimeInput(document.getElementById('auto-end-time').value);
+        if(start === null || end === null) { alert('開始・終了時間を選択してください'); return; }
+        if(start < 0 || start >= MAX_HEIGHT_PX || end <= 0 || end > MAX_HEIGHT_PX) { alert('時間は5:00～翌3:00の範囲で選択してください'); return; }
         if(start >= end) { alert('終了時間は開始時間より後に設定してください'); return; }
         if(matId) { autoAddRules.push({ matId, start, end }); renderAutoAddRules(); saveLocalData(); }
     });
@@ -643,33 +644,25 @@ function initSettingsModal() {
     const select = document.getElementById('auto-mat-select');
     if(select) select.innerHTML = materials.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
 
-    let timeOptions = '';
-    for(let i=0; i<=22; i++) {
-        for(let m=0; m<60; m+=30) {
-            if (i===22 && m>0) continue; 
-            let totalMins = i * 60 + m;
-            let h = (i + 5) % 24;
-            let label = h + ':' + (m === 0 ? '00' : '30');
-            if(i + 5 >= 24) label = '翌' + label;
-            timeOptions += `<option value="${totalMins}">${label}</option>`;
-        }
-    }
     const st = document.getElementById('auto-start-time');
     const et = document.getElementById('auto-end-time');
-    if(st) st.innerHTML = timeOptions;
-    if(et) et.innerHTML = timeOptions;
+    if(st && !st.value) st.value = '05:00';
+    if(et && !et.value) et.value = '06:00';
 
     renderAutoAddRules();
+}
+
+function formatAutoRuleTime(minutes) {
+    if (!Number.isFinite(Number(minutes))) return '';
+    return formatScheduleTime(Number(minutes));
 }
 
 function renderAutoAddRules() {
     const list = document.getElementById('auto-add-list'); if(!list) return;
     list.innerHTML = autoAddRules.map((rule, index) => {
         const mat = materials.find(m => m.id === rule.matId); if(!mat) return '';
-        const startOpt = document.querySelector(`#auto-start-time option[value="${rule.start}"]`);
-        const endOpt = document.querySelector(`#auto-end-time option[value="${rule.end}"]`);
-        const startLabel = startOpt ? startOpt.innerText : rule.start;
-        const endLabel = endOpt ? endOpt.innerText : rule.end;
+        const startLabel = formatAutoRuleTime(rule.start);
+        const endLabel = formatAutoRuleTime(rule.end);
 
         return `<div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:12px; align-items:center; background:#fff; padding:6px; border-radius:6px; border:1px solid #E2E8F0;">
             <span><span class="color-dot" style="background:${mat.color};"></span> ${mat.name} (${startLabel} ～ ${endLabel})</span>
@@ -692,27 +685,19 @@ function getDefaultBlockHeight() {
 function initAppSettingsModal() {
     const confirmDayReset = document.getElementById('setting-confirm-day-reset');
     const defaultMinutes = document.getElementById('setting-default-minutes');
-    const exportTodayHighlight = document.getElementById('setting-export-today-highlight');
-    const exportCurrentTimeLine = document.getElementById('setting-export-current-time-line');
 
     if (confirmDayReset) confirmDayReset.checked = !!appSettings.confirmDayReset;
     if (defaultMinutes) defaultMinutes.value = getDefaultBlockHeight();
-    if (exportTodayHighlight) exportTodayHighlight.checked = appSettings.exportTodayHighlight === false;
-    if (exportCurrentTimeLine) exportCurrentTimeLine.checked = appSettings.exportCurrentTimeLine === false;
 }
 
 function saveAppSettingsFromModal() {
     const confirmDayReset = document.getElementById('setting-confirm-day-reset');
     const defaultMinutes = document.getElementById('setting-default-minutes');
-    const exportTodayHighlight = document.getElementById('setting-export-today-highlight');
-    const exportCurrentTimeLine = document.getElementById('setting-export-current-time-line');
     const minutes = parseInt(defaultMinutes?.value, 10);
 
     appSettings = {
         confirmDayReset: !!confirmDayReset?.checked,
-        defaultBlockMinutes: Math.max(1, Number.isFinite(minutes) ? minutes : 60),
-        exportTodayHighlight: exportTodayHighlight?.checked !== false,
-        exportCurrentTimeLine: exportCurrentTimeLine?.checked !== false
+        defaultBlockMinutes: Math.max(1, Number.isFinite(minutes) ? minutes : 60)
     };
     saveLocalData();
     document.getElementById('app-settings-modal')?.classList.add('modal-hidden');
@@ -782,11 +767,34 @@ function performRedo() {
     }
 }
 
-function resetPlanner() {
-    const blocks = document.querySelectorAll('.plan-block');
-    if (blocks.length === 0) return;
+function hasPlannerResettableContent() {
+    const hasBlocks = document.querySelectorAll('.plan-block').length > 0;
+    const hasInputs = Array.from(document.querySelectorAll('.timetable input, .timetable textarea'))
+        .some(input => String(input.value || '').trim() !== '');
+    const hasQuality = Array.from(document.querySelectorAll('.quality-box'))
+        .some(box => String(box.dataset.value || '').trim() !== '');
+    return hasBlocks || hasInputs || hasQuality;
+}
 
-    if (!confirm('計画表に入れた教材をすべてリセットしますか？\nUndo または Ctrl+Z で元に戻せます。')) {
+function clearPlannerFooterInputs() {
+    document.querySelectorAll('.timetable input, .timetable textarea').forEach(input => {
+        input.value = '';
+        input.dataset.manual = 'false';
+        if (input.matches('.todo-row textarea')) autosizeTodoTextarea(input);
+    });
+
+    document.querySelectorAll('.quality-box').forEach(box => {
+        box.dataset.value = '';
+        box.innerText = '-';
+    });
+
+    updateWeeklySummary();
+}
+
+function resetPlanner() {
+    if (!hasPlannerResettableContent()) return;
+
+    if (!confirm('週間計画表の教材、ToDo、振り返り、達成度をすべてリセットしますか？')) {
         return;
     }
 
@@ -795,9 +803,11 @@ function resetPlanner() {
         undoStack.push(beforeResetState);
     }
 
-    blocks.forEach(block => block.remove());
+    document.querySelectorAll('.plan-block').forEach(block => block.remove());
+    clearPlannerFooterInputs();
     if (currentEditingBlock) closeEditModal();
     updateDailyTodos();
+    clearPlannerFooterInputs();
     updateNowNextPanel();
 
     const afterResetState = getBlocksState();
@@ -1113,8 +1123,8 @@ function initTimetable() {
             footerHtml += `
             <div class="weekly-summary-box">
                 <div class="fs-title">週集計</div>
-                <div class="achieve-row"><span>達成度(量)</span> <div><input type="number" class="weekly-achieved" step="0.5">h / <input type="number" class="weekly-total" step="0.5">h</div></div>
-                <div class="achieve-row"><span>達成度(質)</span> <div class="weekly-quality-display">-</div></div>
+                <div class="achieve-row weekly-quantity-row"><span>達成度(量)</span> <div class="weekly-metric-value"><input type="number" class="weekly-achieved" step="0.5">h / <input type="number" class="weekly-total" step="0.5">h <span class="weekly-percent weekly-quantity-percent">-</span></div></div>
+                <div class="achieve-row weekly-quality-row"><span>達成度(質)</span> <div class="weekly-metric-value"><span class="weekly-quality-display">-</span> <span class="weekly-percent weekly-quality-percent">-</span></div></div>
             </div>`;
         }
         
@@ -1713,6 +1723,32 @@ function autosizeTodoTextareas(root = document) {
     root.querySelectorAll('.todo-row textarea').forEach(autosizeTodoTextarea);
 }
 
+function autosizeReflectionTextareasForExport(root = document) {
+    root.querySelectorAll('.reflection-textarea').forEach(textarea => {
+        textarea.dataset.exportPreviousHeight = textarea.style.height || '';
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.max(60, textarea.scrollHeight)}px`;
+
+        const mirror = document.createElement('div');
+        mirror.className = 'reflection-export-text';
+        mirror.textContent = textarea.value || '';
+        mirror.style.minHeight = textarea.style.height;
+        textarea.insertAdjacentElement('afterend', mirror);
+        textarea.dataset.exportPreviousDisplay = textarea.style.display || '';
+        textarea.style.display = 'none';
+    });
+}
+
+function restoreReflectionTextareasAfterExport(root = document) {
+    root.querySelectorAll('.reflection-textarea').forEach(textarea => {
+        textarea.style.height = textarea.dataset.exportPreviousHeight || '';
+        textarea.style.display = textarea.dataset.exportPreviousDisplay || '';
+        delete textarea.dataset.exportPreviousHeight;
+        delete textarea.dataset.exportPreviousDisplay;
+    });
+    root.querySelectorAll('.reflection-export-text').forEach(mirror => mirror.remove());
+}
+
 function initModalScrollLock() {
     const modals = Array.from(document.querySelectorAll('#edit-modal, #sidebar-manage-modal, #mat-edit-modal, #export-modal, #download-format-modal, #settings-modal, #app-settings-modal, #folder-sort-modal, #gcal-modal'));
     if (modals.length === 0) return;
@@ -2034,6 +2070,12 @@ function updateDailyTodos() {
     updateWeeklySummary();
 }
 
+function formatWeeklyPercent(value, total) {
+    if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '-';
+    const percent = (value / total) * 100;
+    return `${percent.toFixed(1).replace('.0', '')}%`;
+}
+
 function updateWeeklySummary() {
     let sumAchieved = 0;
     let sumTotal = 0;
@@ -2052,6 +2094,8 @@ function updateWeeklySummary() {
     const weekAchieved = document.querySelector('.weekly-achieved');
     const weekTotal = document.querySelector('.weekly-total');
     const weekQualityDisplay = document.querySelector('.weekly-quality-display'); 
+    const weekQuantityPercent = document.querySelector('.weekly-quantity-percent');
+    const weekQualityPercent = document.querySelector('.weekly-quality-percent');
 
     if (weekAchieved && weekAchieved.dataset.manual !== "true") {
         weekAchieved.value = sumAchieved > 0 ? sumAchieved.toFixed(1).replace('.0', '') : '';
@@ -2060,7 +2104,13 @@ function updateWeeklySummary() {
         weekTotal.value = sumTotal > 0 ? sumTotal.toFixed(1).replace('.0', '') : '';
     }
     if (weekQualityDisplay) {
-        weekQualityDisplay.innerText = sumQuality > 0 ? sumQuality : '-';
+        weekQualityDisplay.innerHTML = `<span class="weekly-quality-score">${sumQuality > 0 ? sumQuality : '-'}</span>/35`;
+    }
+    if (weekQuantityPercent) {
+        weekQuantityPercent.innerText = formatWeeklyPercent(parseFloat(weekAchieved?.value || '0'), parseFloat(weekTotal?.value || '0'));
+    }
+    if (weekQualityPercent) {
+        weekQualityPercent.innerText = sumQuality > 0 ? formatWeeklyPercent(sumQuality, 35) : '-';
     }
 }
 
@@ -2086,8 +2136,7 @@ function getPlannerFileBaseName() {
 
 function applyImageExportSettings(area, format) {
     if (format !== 'image') return;
-    area.classList.toggle('hide-today-highlight', appSettings.exportTodayHighlight === false);
-    area.classList.toggle('hide-current-time-line', appSettings.exportCurrentTimeLine === false);
+    area.classList.add('hide-today-highlight', 'hide-current-time-line');
 }
 
 function clearImageExportSettings(area) {
@@ -2102,6 +2151,7 @@ async function capturePlannerCanvas(format) {
     }
     updateDailyTodos();
     autosizeTodoTextareas(area);
+    autosizeReflectionTextareasForExport(area);
     area.classList.add('is-exporting');
     applyImageExportSettings(area, format);
     try {
@@ -2110,6 +2160,7 @@ async function capturePlannerCanvas(format) {
     } finally {
         area.classList.remove('is-exporting');
         clearImageExportSettings(area);
+        restoreReflectionTextareasAfterExport(area);
         updatePlannerScale();
     }
 }
@@ -2221,9 +2272,7 @@ function loadLocalData() {
     if(data.appSettings) {
         appSettings = {
             confirmDayReset: data.appSettings.confirmDayReset ?? appSettings.confirmDayReset,
-            defaultBlockMinutes: data.appSettings.defaultBlockMinutes ?? appSettings.defaultBlockMinutes,
-            exportTodayHighlight: data.appSettings.exportTodayHighlight ?? appSettings.exportTodayHighlight,
-            exportCurrentTimeLine: data.appSettings.exportCurrentTimeLine ?? appSettings.exportCurrentTimeLine
+            defaultBlockMinutes: data.appSettings.defaultBlockMinutes ?? appSettings.defaultBlockMinutes
         };
     }
     if(typeof initSidebar === 'function') initSidebar();
@@ -2436,6 +2485,41 @@ const timeInput = document.getElementById('edit-duration');
 const editStartTimeInput = document.getElementById('edit-start-time');
 const editEndTimeInput = document.getElementById('edit-end-time');
 const noteInput = document.getElementById('edit-note');
+
+function getEditModalTimes() {
+    const startTimeValue = editStartTimeInput?.value || '';
+    const endTimeValue = editEndTimeInput?.value || '';
+    const startTime = parseScheduleTimeInput(startTimeValue);
+    const endTime = parseScheduleTimeInput(endTimeValue);
+
+    if (startTime === null || endTime === null) return null;
+    const adjustedEnd = endTime <= startTime ? endTime + (24 * 60) : endTime;
+    if (adjustedEnd <= startTime) return null;
+
+    return { startTime, endTime: adjustedEnd };
+}
+
+function syncEditDurationFromTimeRange() {
+    const times = getEditModalTimes();
+    if (!times || !timeInput) return;
+    timeInput.value = Math.max(1, Math.round(times.endTime - times.startTime));
+}
+
+function syncEditEndFromDuration() {
+    if (!editStartTimeInput || !editEndTimeInput || !timeInput) return;
+    const startTime = parseScheduleTimeInput(editStartTimeInput.value);
+    const duration = parseInt(timeInput.value, 10);
+    if (startTime === null || !Number.isFinite(duration) || duration <= 0) return;
+    editEndTimeInput.value = formatScheduleTime(startTime + duration);
+}
+
+function initEditTimeSync() {
+    if (!editStartTimeInput || !editEndTimeInput || !timeInput || timeInput.dataset.syncReady === 'true') return;
+    timeInput.dataset.syncReady = 'true';
+    timeInput.addEventListener('input', syncEditEndFromDuration);
+    editStartTimeInput.addEventListener('input', syncEditDurationFromTimeRange);
+    editEndTimeInput.addEventListener('input', syncEditDurationFromTimeRange);
+}
 
 function openEditModal(block) {
     currentEditingBlock = block;

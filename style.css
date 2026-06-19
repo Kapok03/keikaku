@@ -93,6 +93,8 @@ body.material-dragging .planner-board {
 .is-exporting .day-actions { display: none; }
 .is-exporting .now-next-panel { display: none; }
 .is-exporting .todo-row textarea { height: auto; overflow: visible; }
+.is-exporting .reflection-textarea { overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.reflection-export-text { width: 100%; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; font-size: 11px; padding: 6px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; background: #fff; color: var(--text-color); }
 .day-col.is-today .day-header { background: #FFF7ED; color: #9A3412; }
 .day-col.is-today .day-grid { background: #FFFBEB; }
 .is-exporting.hide-today-highlight .day-col.is-today .day-header { background: transparent; color: #2D3748; }
@@ -115,12 +117,14 @@ body.material-dragging .planner-board {
 .todo-time { width: 34px; border: none; border-bottom: 1px solid #CBD5E1; font-size: 11px; margin-left: 4px; background: transparent; text-align: center; color: #3e4550; height: 18px; padding: 0;}
 
 .achieve-row { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center;}
+.achieve-row > div { white-space: nowrap; }
 .achieve-row input { width: 38px; text-align: center; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 11px; height: 20px; padding: 0;}
 
 /* 達成度(質) ボックススタイル */
 .quality-box { width: 38px; height: 20px; border: 1px solid #CBD5E1; border-radius: 4px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; user-select: none; transition: all 0.1s;}
 .quality-box:hover { border-color: var(--primary); background: #F0F7FF; }
-.weekly-quality-display { font-weight: bold; font-size: 12px; width: 38px; text-align: center; }
+.weekly-quality-display { font-weight: bold; font-size: 12px; min-width: 46px; text-align: center; white-space: nowrap; }
+.weekly-quality-score { color: #d65050; }
 
 #quality-selector-popup { position: absolute; z-index: 2000; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 6px; grid-template-columns: repeat(5, 1fr); gap: 6px;}
 #quality-selector-popup.modal-open { display: grid !important; }
@@ -129,10 +133,12 @@ body.material-dragging .planner-board {
 .q-clear { grid-column: span 5; height: 24px; font-size: 11px; background: #F8FAFC; color: #718096; border: none;}
 .q-clear:hover { background: #E2E8F0; color: #4A5568; border: none;}
 
-.reflection-textarea { width: 100%; height: 60px; box-sizing: border-box; resize: none; border: 1px solid var(--border-color); border-radius: 4px; font-size: 11px; padding: 6px;}
+.reflection-textarea { width: 100%; height: 60px; box-sizing: border-box; resize: none; border: 1px solid var(--border-color); border-radius: 4px; font-size: 11px; padding: 6px; line-height: 1.35; overflow-wrap: anywhere; word-break: break-all;}
 
 .weekly-summary-box { background: #FEFCBF; border: 2px solid #ECC94B; padding: 8px; margin-top: 8px; border-radius: var(--radius-sm);}
 .weekly-summary-box .fs-title { background: #e9ca5a; color: #744210; border: none; border-radius: 2px;}
+.weekly-quantity-row { gap: 6px; }
+.weekly-quantity-row > div { flex-shrink: 0; }
 
 .plan-block { position: absolute; width: 92%; left: 4%; border-radius: 6px; padding: 2px 6px; box-sizing: border-box; font-size: 11px; font-weight: bold; cursor: pointer; overflow: hidden; border-left: 4px solid; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; flex-direction: column; transition: filter 0.1s; user-select: none; -webkit-user-select: none;}
 .plan-block:hover { filter: brightness(0.95); box-shadow: 0 2px 5px rgba(0,0,0,0.15);}
